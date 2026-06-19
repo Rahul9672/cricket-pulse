@@ -24,7 +24,7 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
   spark-master:
-    image: apache/spark:3.5.0
+    image: apache/spark:latest
     container_name: spark-master
     command: >
       /opt/spark/bin/spark-class
@@ -36,7 +36,7 @@ services:
       - ./:/app
 
   spark-worker:
-    image: apache/spark:3.5.0
+    image: apache/spark:latest
     container_name: spark-worker
     command: >
       /opt/spark/bin/spark-class
@@ -47,12 +47,26 @@ services:
     volumes:
       - ./:/app
 
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: cricketpulse
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
   airflow-init:
     image: apache/airflow:2.8.0
     container_name: airflow-init
+    depends_on:
+      - postgres
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://admin:admin123@postgres/cricketpulse
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     volumes:
       - ./dags:/opt/airflow/dags
@@ -69,7 +83,7 @@ services:
       - airflow-init
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://admin:admin123@postgres/cricketpulse
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     volumes:
       - ./dags:/opt/airflow/dags
@@ -79,19 +93,17 @@ services:
       - airflow-data:/opt/airflow
     ports:
       - "8081:8080"
-    command:
-      - bash
-      - -c
-      - |
-          airflow users create \
-            --username admin \
-            --password admin \
-            --firstname Admin \
-            --lastname User \
-            --role Admin \
-            --email admin@example.com || true
-
-          exec airflow webserver
+    command: >
+      bash -c "
+      airflow users create
+      --username admin
+      --password admin
+      --firstname Rahul
+      --lastname Kumar
+      --role Admin
+      --email admin@example.com || true &&
+      airflow webserver
+      "
     restart: unless-stopped
 
   airflow-scheduler:
@@ -101,7 +113,7 @@ services:
       - airflow-init
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://admin:admin123@postgres/cricketpulse
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     volumes:
       - ./dags:/opt/airflow/dags
@@ -112,5 +124,20 @@ services:
     command: airflow scheduler
     restart: unless-stopped
 
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: grafana
+    depends_on:
+      - postgres
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+    volumes:
+      - grafana-data:/var/lib/grafana
+
 volumes:
+  postgres-data:
+  grafana-data:
   airflow-data:
